@@ -1,33 +1,70 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
-
-name: Auto Deploy
+# 部署 Vite Vue3 项目到 GitHub Pages (使用 pnpm)
+name: Deploy to GitHub Pages
 
 on:
+  # 当 push 到 main 分支时运行此工作流
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+  # 允许手动从 Actions 标签页运行此工作流
+  workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: frontend
+# 设置 GITHUB_TOKEN 的权限，允许部署到 Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
+# 定义一个名为 deploy 的作业 (job)
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v3
-    - name: Setup node
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20'
-        cache: 'pnpm'
-        cache-dependency-path: pnpm-lock.yaml
-    - name: Build
-      run: pnpm i && pnpm run build
-    - name: Deploy
-      uses: JamesIves/github-pages-deploy-action@4.1.1
-      with:
-        branch: gh-pages
-        folder: dist
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # 必须拉取完整历史记录，以便部署工具可以工作
+          fetch-depth: 0
+
+      # 2. 设置 pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8 # 推荐使用最新的 pnpm 版本
+
+      # 3. 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20 # 推荐使用 LTS 版本
+          cache: 'pnpm' # 启用 pnpm 缓存，加速依赖安装
+
+      # 4. 安装依赖
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. 构建项目 (假设你的 package.json 中有 build 命令)
+      - name: Build project
+        run: pnpm run build
+        # 默认情况下 Vite 构建的输出目录是 dist，你需要确保你的构建命令是正确的
+
+      # 6. 配置 GitHub Pages 环境
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        # 使用 Vite 默认的 'dist' 目录作为构建输出
+        with:
+          static_site_generator: vite # 明确指定使用 Vite
+
+      # 7. 上传构建产物 (dist 目录)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # 上传构建后的 'dist' 目录内容
+          path: './dist'
+
+      # 8. 部署到 GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
