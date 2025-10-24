@@ -23,7 +23,7 @@ jobs:
       with:
         node-version: '20'
         cache: 'pnpm'
-        cache-dependency-path: frontend/pnpm.lock
+        cache-dependency-path: pnpm-lock.yaml
     - name: Build
       run: pnpm i && pnpm run build
     - name: Deploy
