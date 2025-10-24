@@ -1,40 +1,24 @@
-# .github/workflows/deploy-pages.yml
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
 
-name: Deploy Vue 3 to GitHub Pages
+name: Auto Build Release
+
+permissions:
+  contents: write  # 允许写入内容
+  packages: write  # 如果您正在使用 GitHub Packages
+  discussions: write  # 如果您正在使用讨论
 
 on:
-  # 在推送到 main 分支时触发
-  push:
-    branches:
-      - main  # 或者 master，取决于你的默认分支名
-
-  # 允许你从 Actions 标签页手动运行此工作流
-  workflow_dispatch:
-
-# 设置 GITHUB_TOKEN 的权限，以便部署到 GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# 只允许一个并发部署，跳过在进行中的运行之间排队的运行。
-# 但是，不要取消进行中的运行，因为我们希望允许那些部署完成。
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+ push:
+   branches: [ "main" ]
+ pull_request:
+   branches: [ "master" ]
 
 jobs:
   build:
-    name: Build Project
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20 # 建议使用 LTS 版本
+      - uses: actions/checkout@v3
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v3
@@ -42,42 +26,11 @@ jobs:
           version: 8 # 指定 pnpm 版本
           run_install: false # 我们将在下一步手动运行 install
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+      - name: Build
+        run: pnpm install && pnpm run build
 
-      - name: Set up pnpm cache
-        uses: actions/cache@v4
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@4.1.1
         with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile # 使用 --frozen-lockfile 保证 CI 环境一致性
-
-      - name: Build project
-        run: pnpm run build # 假设你的 build 命令是 'build'
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # Vite 默认的构建输出目录是 'dist'
-          path: ./dist
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build # 依赖 build 任务
-    runs-on: ubuntu-latest
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          branch: gh-pages
+          folder: dist
