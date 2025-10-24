@@ -1,70 +1,83 @@
-# 部署 Vite Vue3 项目到 GitHub Pages (使用 pnpm)
-name: Deploy to GitHub Pages
+# .github/workflows/deploy-pages.yml
+
+name: Deploy Vue 3 to GitHub Pages
 
 on:
-  # 当 push 到 main 分支时运行此工作流
+  # 在推送到 main 分支时触发
   push:
     branches:
-      - main
-  # 允许手动从 Actions 标签页运行此工作流
+      - main  # 或者 master，取决于你的默认分支名
+
+  # 允许你从 Actions 标签页手动运行此工作流
   workflow_dispatch:
 
-# 设置 GITHUB_TOKEN 的权限，允许部署到 Pages
+# 设置 GITHUB_TOKEN 的权限，以便部署到 GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# 定义一个名为 deploy 的作业 (job)
+# 只允许一个并发部署，跳过在进行中的运行之间排队的运行。
+# 但是，不要取消进行中的运行，因为我们希望允许那些部署完成。
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  build:
+    name: Build Project
     runs-on: ubuntu-latest
-    
     steps:
-      # 1. 检出代码
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          # 必须拉取完整历史记录，以便部署工具可以工作
-          fetch-depth: 0
 
-      # 2. 设置 pnpm
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8 # 推荐使用最新的 pnpm 版本
-
-      # 3. 设置 Node.js 环境
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # 推荐使用 LTS 版本
-          cache: 'pnpm' # 启用 pnpm 缓存，加速依赖安装
+          node-version: 20 # 建议使用 LTS 版本
 
-      # 4. 安装依赖
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # 5. 构建项目 (假设你的 package.json 中有 build 命令)
-      - name: Build project
-        run: pnpm run build
-        # 默认情况下 Vite 构建的输出目录是 dist，你需要确保你的构建命令是正确的
-
-      # 6. 配置 GitHub Pages 环境
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-        # 使用 Vite 默认的 'dist' 目录作为构建输出
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v3
         with:
-          static_site_generator: vite # 明确指定使用 Vite
+          version: 8 # 指定 pnpm 版本
+          run_install: false # 我们将在下一步手动运行 install
 
-      # 7. 上传构建产物 (dist 目录)
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Set up pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile # 使用 --frozen-lockfile 保证 CI 环境一致性
+
+      - name: Build project
+        run: pnpm run build # 假设你的 build 命令是 'build'
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # 上传构建后的 'dist' 目录内容
-          path: './dist'
+          # Vite 默认的构建输出目录是 'dist'
+          path: ./dist
 
-      # 8. 部署到 GitHub Pages
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build # 依赖 build 任务
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
