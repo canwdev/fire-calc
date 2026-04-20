@@ -279,6 +279,7 @@ const resultItems = computed(() => {
     const resultMonths = stepData.value.length - 1
     const resultYears = resultMonths / 12
     const originalValue = formData.value.currentValue || 0
+    const targetValue = formData.value.targetValue || 0
     const increasedValue = result - originalValue
     const increasedPercent = originalValue > 0 ? `${Number.parseFloat((((result - originalValue) / originalValue) * 100).toFixed(2))}%` : '0%'
     const resultAge = stepData.value[stepData.value.length - 1]?.age
@@ -289,11 +290,15 @@ const resultItems = computed(() => {
 
     const { piYearly, piMonthly, piDaily } = getPassiveIncome(result)
 
+    const achievementRateValue = originalValue > 0 ? Number.parseFloat(((originalValue / targetValue) * 100).toFixed(2)) : 0
+    const achievementRate = originalValue > 0 ? `${achievementRateValue}%` : '0%'
+
     // FIRE 相关计算
     const monthlyExpense = formData.value.monthlyExpense || 0
     const yearlyExpense = monthlyExpense * 12
     const fireTargetAmount = yearlyExpense * 25 // 4%法则：需要年支出的25倍
-    const fireAchievementRate = fireTargetAmount > 0 ? `${Number.parseFloat(((originalValue / fireTargetAmount) * 100).toFixed(2))}%` : 'N/A'
+    const fireAchievementRateValue = fireTargetAmount > 0 ? Number.parseFloat(((originalValue / fireTargetAmount) * 100).toFixed(2)) : 0
+    const fireAchievementRate = fireTargetAmount > 0 ? `${fireAchievementRateValue}%` : 'N/A'
     const safeWithdrawal4 = result * 0.04 // 4%安全提取额
     const safeWithdrawal3 = result * 0.03 // 3%保守提取额
 
@@ -313,24 +318,31 @@ const resultItems = computed(() => {
 
     return [
       {
+        label: `目标资产达成率`,
+        key: 'achievementRate',
+        value: `${achievementRate}`,
+        percentage: achievementRateValue,
+        tips: `基于当前资产`,
+        type: 'highlight',
+      },
+      {
         label: '结果资产',
         key: 'resultValue',
         value: `${numberWithCommas(result)}`,
-        type: 'highlight',
       },
       {
         label: '结果时间',
         key: 'resultTimes',
-        value: `${stepData.value[stepData.value.length - 1]?.dateMoment?.format('YYYY-MM-DD')} (${convertMonthsToYearsAndMonths(resultMonths)})`,
+        value: `${stepData.value[stepData.value.length - 1]?.dateMoment?.format('YYYY-MM-DD')} (${convertMonthsToYearsAndMonths(resultMonths)}) · 年龄: ${resultAge} 岁`,
         tips: `${resultMonths}个月`,
         type: 'text',
       },
-      { label: '目标年龄', key: 'resultAge', value: `${resultAge}`, type: 'text' },
       {
         label: `FIRE达成率(FIRE目标: ${numberWithCommas(fireTargetAmount)})`,
         key: 'fireAchievementRate',
         value: `${fireAchievementRate}`,
         type: 'highlight',
+        percentage: fireAchievementRateValue,
         tips: `存够年支出的 25 倍，每年只花总资产的 4%，你的钱就能一辈子花不完。`,
       },
       {
@@ -674,23 +686,34 @@ async function saveImage() {
             <input
               v-model="currentScenarioName"
               class="calc-input scenario-name-input"
-              placeholder="情景名称"
+              placeholder="输入情景名称"
               type="text"
+              @keyup.enter="saveScenario"
             >
-            <button class="a-button" @click="saveScenario">
-              保存情景
+            <button class="a-button scenario-save-btn" @click="saveScenario">
+              保存
             </button>
           </div>
           <div v-if="scenarios.length > 0" class="scenario-list">
             <span class="scenario-label">已保存情景:</span>
-            <div v-for="scenario in scenarios" :key="scenario.name" class="scenario-item">
-              <button class="a-button scenario-load-btn" @click="loadScenario(scenario.name)">
-                {{ scenario.name }}
-              </button>
-              <button class="a-button scenario-delete-btn" @click="deleteScenario(scenario.name)">
-                ×
-              </button>
+            <div class="scenario-items">
+              <div
+                v-for="scenario in scenarios"
+                :key="scenario.name"
+                class="scenario-item"
+                :class="{ 'scenario-active': currentScenarioName === scenario.name }"
+              >
+                <button class="a-button scenario-load-btn" @click="loadScenario(scenario.name)">
+                  {{ scenario.name }}
+                </button>
+                <button class="a-button scenario-delete-btn" @click.stop="deleteScenario(scenario.name)">
+                  ×
+                </button>
+              </div>
             </div>
+          </div>
+          <div v-else class="scenario-empty">
+            暂无保存的情景，输入名称后点击保存
           </div>
         </div>
 
@@ -730,6 +753,17 @@ async function saveImage() {
             </div>
             <div class="result-value">
               {{ item.value }}
+            </div>
+            <!-- 进度条 -->
+            <div v-if="item.percentage !== undefined" class="progress-bar-wrapper">
+              <div class="progress-bar">
+                <div
+                  class="progress-bar-fill"
+                  :style="{ width: `${Math.min(Math.max(item.percentage, 0), 100)}%` }"
+                  :class="{ 'progress-complete': item.percentage >= 100 }"
+                />
+              </div>
+              <!-- <span class="progress-text">{{ item.percentage.toFixed(1) }}%</span> -->
             </div>
             <div v-if="item.tips" class="result-tips">
               {{ item.tips }}
@@ -893,6 +927,39 @@ async function saveImage() {
         font-weight: 600;
       }
     }
+
+    // 进度条样式
+    .progress-bar-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .progress-bar {
+        flex: 1;
+        height: 8px;
+        background-color: #e8e8e8;
+        border-radius: 4px;
+        overflow: hidden;
+
+        .progress-bar-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #5070dd 0%, #69b1ff 100%);
+          border-radius: 4px;
+          transition: width 0.3s ease;
+
+          &.progress-complete {
+            background: linear-gradient(90deg, #52c41a 0%, #95de64 100%);
+          }
+        }
+      }
+
+      .progress-text {
+        font-size: 12px;
+        color: #666;
+        min-width: 45px;
+        text-align: right;
+      }
+    }
   }
 
   // 情景管理样式
@@ -903,8 +970,7 @@ async function saveImage() {
     border-radius: 6px;
     border: 1px dashed #d9d9d9;
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    gap: 16px;
 
     .scenario-header {
       display: flex;
@@ -914,40 +980,84 @@ async function saveImage() {
         flex: 1;
         max-width: 200px;
       }
+
+      .scenario-save-btn {
+        background-color: #5070dd;
+        color: #fff;
+        border-color: #5070dd;
+
+        &:hover {
+          background-color: #4058b8;
+        }
+      }
     }
 
     .scenario-list {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
       gap: 8px;
+      align-items: center;
 
       .scenario-label {
         font-size: 12px;
         color: #666;
+        font-weight: 500;
+      }
+
+      .scenario-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .scenario-item {
         display: flex;
         align-items: center;
-        gap: 2px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+
+        &.scenario-active {
+          background-color: #e6f7ff;
+
+          .scenario-load-btn {
+            background-color: #5070dd;
+            color: #fff;
+            border-color: #5070dd;
+            font-weight: 500;
+          }
+        }
 
         .scenario-load-btn {
           font-size: 12px;
-          padding: 2px 8px;
+          padding: 4px 10px;
           background-color: #e6f7ff;
           border-color: #91d5ff;
           color: #096dd9;
+          border-radius: 4px 0 0 4px;
+
+          &:hover {
+            background-color: #bae7ff;
+          }
         }
 
         .scenario-delete-btn {
           font-size: 12px;
-          padding: 2px 6px;
-          color: #ff4d4f;
-          border-color: #ffa39e;
-          background-color: #fff1f0;
+          padding: 4px 8px;
+          border-radius: 0 4px 4px 0;
+          border-left: none;
+
+          &:hover {
+            background-color: #ffccc7;
+          }
         }
       }
+    }
+
+    .scenario-empty {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+      padding: 8px;
+      font-style: italic;
     }
   }
 
