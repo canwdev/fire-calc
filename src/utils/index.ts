@@ -50,7 +50,7 @@ export function uploadJson() {
       const R = new FileReader()
       R.onload = (e) => {
         try { r(JSON.parse(e.target.result)) }
-        catch (E) { j('Invalid JSON') }document.body.removeChild(i)
+        catch (E) { j('Invalid JSON') } document.body.removeChild(i)
       }
       R.onerror = () => { j('Read error'); document.body.removeChild(i) }
       R.readAsText(f)
