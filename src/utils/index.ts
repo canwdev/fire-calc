@@ -26,7 +26,15 @@ export function convertMonthsToYearsAndMonths(months: string | number) {
 }
 
 export function numberWithCommas(num: string | number) {
-  return Number(num).toLocaleString()
+  const value = Number(num)
+  // 如果输入不是有效数字，返回原样或处理异常
+  if (Number.isNaN(value))
+    return num.toString()
+
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }
 
 export function downloadJson(content: string, filename = 'download.json') {
