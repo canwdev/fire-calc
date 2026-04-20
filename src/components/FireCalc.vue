@@ -255,7 +255,7 @@ const resultItems = computed(() => {
     const avgYearlyGrowth = resultYears > 0 ? increasedValue / resultYears : 0
     const avgMonthlyGrowth = resultMonths > 0 ? increasedValue / resultMonths : 0
 
-    const { piYearly, piMonthly, piDaily } = getPassiveIncome(result)
+    const { piYearly, piMonthly } = getPassiveIncome(result)
 
     const achievementRateValue = originalValue > 0 ? Number.parseFloat(((originalValue / targetValue) * 100).toFixed(2)) : 0
     const achievementRate = originalValue > 0 ? `${achievementRateValue}%` : '0%'
@@ -288,7 +288,8 @@ const resultItems = computed(() => {
     const lastRealValue = lastStep?.realValue || result
     const realValueLoss = result - lastRealValue // 购买力损失
     const realValueLossPercent = result > 0 ? `${Number.parseFloat(((realValueLoss / result) * 100).toFixed(2))}%` : '0%'
-    const _realPassiveIncome = lastRealValue * formData.value.annualInterestRate // 实际被动收入（预留）
+    const realPassiveIncomeYearly = lastRealValue * formData.value.annualInterestRate // 实际被动收入（年）
+    const realPassiveIncomeMonthly = realPassiveIncomeYearly / 12 // 实际被动收入（月）
     const realSafeWithdrawal4 = lastRealValue * 0.04 // 实际4%提取额
 
     return [
@@ -327,31 +328,38 @@ const resultItems = computed(() => {
         tips: `3%保守: ${numberWithCommas(safeWithdrawal3 / 12)}/月`,
         type: 'highlight',
       },
+      {
+        label: '被动收入',
+        key: 'yearPassiveIncome',
+        value: `年收 ${numberWithCommas(piYearly)} · 月收 ${numberWithCommas(piMonthly)}`,
+        type: 'highlight',
+      },
       inflationRate > 0 && {
-        label: '实际购买力',
+        label: `实际购买力(相当于现在的 ${numberWithCommas(result)} 的购买力)`,
         key: 'realValue',
-        value: `${numberWithCommas(lastRealValue)} (相当于现在的 ${numberWithCommas(result)} 的购买力)`,
+        value: `${numberWithCommas(lastRealValue)}`,
         tips: `考虑 ${Number.parseFloat((inflationRate * 100).toFixed(1))}% 年通胀率，购买力缩水 ${realValueLossPercent}`,
-        type: 'highlight' as const,
+        type: 'warning',
       },
       inflationRate > 0 && {
         label: '实际安全提取额',
         key: 'realSafeWithdrawal',
         value: `年提 ${numberWithCommas(realSafeWithdrawal4)} · 月提 ${numberWithCommas(realSafeWithdrawal4 / 12)}`,
         tips: '考虑通胀后的实际购买力',
-        type: 'text' as const,
+        type: 'warning',
+      },
+      inflationRate > 0 && {
+        label: '实际被动收入',
+        key: 'realPassiveIncome',
+        value: `年收 ${numberWithCommas(realPassiveIncomeYearly)} · 月收 ${numberWithCommas(realPassiveIncomeMonthly)}`,
+        tips: '考虑通胀后的实际收益',
+        type: 'warning',
       },
       {
         label: '资产支撑年限',
         key: 'yearsCanSustain',
         value: `${Number.parseFloat(yearsCanSustain.toFixed(2))} 年`,
         tips: `按月支出 ${numberWithCommas(monthlyExpense)} 计算`,
-        type: 'text',
-      },
-      {
-        label: '被动收入',
-        key: 'yearPassiveIncome',
-        value: `年收 ${numberWithCommas(piYearly)} · 月收 ${numberWithCommas(piMonthly)} · 日收 ${numberWithCommas(piDaily)}`,
         type: 'text',
       },
       {
@@ -429,14 +437,13 @@ function initCharts() {
         const {
           piYearly,
           piMonthly,
-          piDaily,
         } = getPassiveIncome(d1.value)
 
         return `<div style="font-family: monospace">
 ${p1.marker}
 <div>日期：${d1.label} (${convertMonthsToYearsAndMonths(d1.monthCount)})</div>
 <div>资产：${numberWithCommas(d1.value)}</div>
-<div>被动收入：年收 ${numberWithCommas(piYearly)} | 月收 ${numberWithCommas(piMonthly)} | 日收 ${numberWithCommas(piDaily)}</div>
+<div>被动收入：年收 ${numberWithCommas(piYearly)} | 月收 ${numberWithCommas(piMonthly)}</div>
 <div>年龄：${d1.age}</div>
 </div>`
       },
@@ -698,7 +705,7 @@ async function saveImage() {
           <div
             v-for="item in resultItems" :key="item.key"
             class="result-item"
-            :class="{ 'result-highlight': item.type === 'highlight' }"
+            :class="{ 'result-highlight': item.type === 'highlight', 'result-warning': item.type === 'warning' }"
           >
             <div class="result-label">
               {{ item.label || formatLabel(item.key) }}:
@@ -875,6 +882,17 @@ async function saveImage() {
 
       .result-value {
         color: #5070dd;
+        font-size: 16px;
+        font-weight: 600;
+      }
+    }
+
+    &.result-warning {
+      background: linear-gradient(135deg, #fffbe6 0%, #fff9f0 100%);
+      border-left-color: #d95050;
+
+      .result-value {
+        color: #d95050;
         font-size: 16px;
         font-weight: 600;
       }
