@@ -71,7 +71,7 @@ const formItems = computed(() => {
     },
     {
       label: '年终奖',
-      key: 'yearEndAwards',
+      key: 'yearEndBonus',
       type: 'number',
       step: 1000,
     },
@@ -130,6 +130,7 @@ function calculateData() {
 
       // 计算年利率
       result += Math.abs(result) * formData.value.annualInterestRate || 0
+      console.log('result', result, formData.value.yearEndBonus)
       if (formData.value.yearEndBonus) {
         result += formData.value.yearEndBonus
       }
