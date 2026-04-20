@@ -64,48 +64,6 @@ const formData = useStorage<IFireCalcFormData>(
   { listenToStorageChanges: false },
 )
 
-// 情景配置列表
-const scenarios = useStorage<IScenario[]>('fire_calc_scenarios', [], localStorage)
-const currentScenarioName = ref('')
-
-// 情景管理函数
-function saveScenario() {
-  if (!currentScenarioName.value.trim()) {
-    alert('请输入情景名称')
-    return
-  }
-  const existingIndex = scenarios.value.findIndex(s => s.name === currentScenarioName.value.trim())
-  const scenario: IScenario = {
-    name: currentScenarioName.value.trim(),
-    data: { ...formData.value },
-    createTime: Date.now(),
-  }
-  if (existingIndex >= 0) {
-    scenarios.value[existingIndex] = scenario
-  }
-  else {
-    scenarios.value.push(scenario)
-  }
-}
-
-function loadScenario(name: string) {
-  const scenario = scenarios.value.find(s => s.name === name)
-  if (scenario) {
-    formData.value = { ...scenario.data }
-    currentScenarioName.value = name
-  }
-}
-
-function deleteScenario(name: string) {
-  const index = scenarios.value.findIndex(s => s.name === name)
-  if (index >= 0) {
-    scenarios.value.splice(index, 1)
-    if (currentScenarioName.value === name) {
-      currentScenarioName.value = ''
-    }
-  }
-}
-
 const formItems = computed(() => {
   return [
     { label: '当前资产', key: 'currentValue', type: 'number', step: 1000 },
@@ -128,7 +86,7 @@ const formItems = computed(() => {
       tips: `${Number.parseFloat((formData.value.annualInterestRate * 100).toFixed(2))}%`,
     },
     {
-      label: '通胀率',
+      label: '年通胀率',
       key: 'inflationRate',
       type: 'number',
       step: 0.001,
@@ -177,6 +135,7 @@ interface IStepData {
   monthlyGrowth?: number // 月度增长
   totalDeposit?: number // 累计存入
   totalInterest?: number // 累计利息
+  realValue?: number // 实际购买力（考虑通胀）
 }
 
 const stepData = ref<IStepData[]>([])
@@ -188,6 +147,7 @@ function calculateData() {
   let age = Number(formData.value.age)
   let totalDeposit = result // 累计存入（初始资产也算作存入）
   let totalInterest = 0 // 累计利息
+  const inflationRate = formData.value.inflationRate || 0
   stepData.value = []
   stepData.value.push({
     label: moment().format('YYYY-MM'),
@@ -197,6 +157,7 @@ function calculateData() {
     monthlyGrowth: 0,
     totalDeposit: result,
     totalInterest: 0,
+    realValue: result, // 初始实际购买力等于名义价值
   })
 
   let iterationMonths = formData.value.iterationYears * 12
@@ -234,6 +195,11 @@ function calculateData() {
 
     const monthlyGrowth = result - prevValue
 
+    // 计算实际购买力（考虑通胀）
+    // 公式：实际价值 = 名义价值 / (1 + 通胀率)^(年数)
+    const yearsElapsed = count / 12
+    const realValue = result / (1 + inflationRate) ** yearsElapsed
+
     stepData.value.push({
       label: `${dateMoment.format('YYYY-MM')}`,
       value: result,
@@ -244,6 +210,7 @@ function calculateData() {
       monthlyGrowth,
       totalDeposit,
       totalInterest,
+      realValue,
     })
 
     if (formData.value.isTargetMode && result >= formData.value.targetValue) {
@@ -316,8 +283,16 @@ const resultItems = computed(() => {
     // 资产能支撑多少年（按当前支出）
     const yearsCanSustain = monthlyExpense > 0 ? result / (monthlyExpense * 12) : 0
 
+    // 实际购买力计算（考虑通胀）
+    const inflationRate = formData.value.inflationRate || 0
+    const lastRealValue = lastStep?.realValue || result
+    const realValueLoss = result - lastRealValue // 购买力损失
+    const realValueLossPercent = result > 0 ? `${Number.parseFloat(((realValueLoss / result) * 100).toFixed(2))}%` : '0%'
+    const _realPassiveIncome = lastRealValue * formData.value.annualInterestRate // 实际被动收入（预留）
+    const realSafeWithdrawal4 = lastRealValue * 0.04 // 实际4%提取额
+
     return [
-      {
+      formData.value.isTargetMode && {
         label: `目标资产达成率`,
         key: 'achievementRate',
         value: `${achievementRate}`,
@@ -333,8 +308,8 @@ const resultItems = computed(() => {
       {
         label: '结果时间',
         key: 'resultTimes',
-        value: `${stepData.value[stepData.value.length - 1]?.dateMoment?.format('YYYY-MM-DD')} (${convertMonthsToYearsAndMonths(resultMonths)}) · 年龄: ${resultAge} 岁`,
-        tips: `${resultMonths}个月`,
+        value: `${stepData.value[stepData.value.length - 1]?.dateMoment?.format('YYYY-MM-DD')}`,
+        tips: `${resultMonths}个月 (${convertMonthsToYearsAndMonths(resultMonths)}) · 年龄: ${resultAge} 岁`,
         type: 'text',
       },
       {
@@ -351,6 +326,20 @@ const resultItems = computed(() => {
         value: `年提 ${numberWithCommas(safeWithdrawal4)} · 月提 ${numberWithCommas(safeWithdrawal4 / 12)}`,
         tips: `3%保守: ${numberWithCommas(safeWithdrawal3 / 12)}/月`,
         type: 'highlight',
+      },
+      inflationRate > 0 && {
+        label: '实际购买力',
+        key: 'realValue',
+        value: `${numberWithCommas(lastRealValue)} (相当于现在的 ${numberWithCommas(result)} 的购买力)`,
+        tips: `考虑 ${Number.parseFloat((inflationRate * 100).toFixed(1))}% 年通胀率，购买力缩水 ${realValueLossPercent}`,
+        type: 'highlight' as const,
+      },
+      inflationRate > 0 && {
+        label: '实际安全提取额',
+        key: 'realSafeWithdrawal',
+        value: `年提 ${numberWithCommas(realSafeWithdrawal4)} · 月提 ${numberWithCommas(realSafeWithdrawal4 / 12)}`,
+        tips: '考虑通胀后的实际购买力',
+        type: 'text' as const,
       },
       {
         label: '资产支撑年限',
@@ -677,43 +666,6 @@ async function saveImage() {
             <button class="a-button" @click="downloadJson(JSON.stringify(formData, null, 2), 'fire-calc-form.json')">
               导出
             </button>
-          </div>
-        </div>
-
-        <!-- 情景管理 -->
-        <div class="scenario-section">
-          <div class="scenario-header">
-            <input
-              v-model="currentScenarioName"
-              class="calc-input scenario-name-input"
-              placeholder="输入情景名称"
-              type="text"
-              @keyup.enter="saveScenario"
-            >
-            <button class="a-button scenario-save-btn" @click="saveScenario">
-              保存
-            </button>
-          </div>
-          <div v-if="scenarios.length > 0" class="scenario-list">
-            <span class="scenario-label">已保存情景:</span>
-            <div class="scenario-items">
-              <div
-                v-for="scenario in scenarios"
-                :key="scenario.name"
-                class="scenario-item"
-                :class="{ 'scenario-active': currentScenarioName === scenario.name }"
-              >
-                <button class="a-button scenario-load-btn" @click="loadScenario(scenario.name)">
-                  {{ scenario.name }}
-                </button>
-                <button class="a-button scenario-delete-btn" @click.stop="deleteScenario(scenario.name)">
-                  ×
-                </button>
-              </div>
-            </div>
-          </div>
-          <div v-else class="scenario-empty">
-            暂无保存的情景，输入名称后点击保存
           </div>
         </div>
 
