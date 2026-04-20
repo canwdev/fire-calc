@@ -26,6 +26,8 @@ interface IFireCalcFormData {
   annualInterestRate: number
   // 年终奖
   yearEndBonus: number
+  // 年终奖发放月份
+  yearEndBonusMonth: number
   // 年龄
   age: number
 }
@@ -42,6 +44,7 @@ const formData = useStorage<IFireCalcFormData>(
     targetValue: 1000000,
     annualInterestRate: 0.025,
     yearEndBonus: 0,
+    yearEndBonusMonth: 4,
     age: 0,
   },
   localStorage,
@@ -75,6 +78,17 @@ const formItems = computed(() => {
       type: 'number',
       step: 1000,
     },
+    ...(formData.value.yearEndBonus > 0
+      ? [{
+          label: '年终奖发放月份',
+          placeholder: '1-12，默认4月',
+          key: 'yearEndBonusMonth',
+          type: 'number',
+          step: 1,
+          min: 1,
+          max: 12,
+        }]
+      : []),
     {
       label: '当前年龄',
       key: 'age',
@@ -125,15 +139,15 @@ function calculateData() {
     const dateMoment = moment().add(count, 'months')
     // 年底更新一次利息
     const isDecember = dateMoment.month() === 11 // 判断月份是否为12月，月份从0开始计数
+    const isBonusMonth = dateMoment.month() === (formData.value.yearEndBonusMonth || 4) - 1 // 年终奖发放月份
     if (isDecember) {
       age += 1
 
       // 计算年利率
       result += Math.abs(result) * formData.value.annualInterestRate || 0
-      console.log('result', result, formData.value.yearEndBonus)
-      if (formData.value.yearEndBonus) {
-        result += formData.value.yearEndBonus
-      }
+    }
+    if (isBonusMonth && formData.value.yearEndBonus) {
+      result += formData.value.yearEndBonus
     }
     result += formData.value.monthlySave || 0
     stepData.value.push({
@@ -176,10 +190,15 @@ const resultItems = computed(() => {
   try {
     const result = resultValue.value || 0
     const resultMonths = stepData.value.length - 1
+    const resultYears = resultMonths / 12
     const originalValue = formData.value.currentValue || 0
     const increasedValue = result - originalValue
     const increasedPercent = `${Number.parseFloat((((result - originalValue) / originalValue) * 100).toFixed(2))}%`
     const resultAge = stepData.value[stepData.value.length - 1]?.age
+
+    // 计算平均增长
+    const avgYearlyGrowth = resultYears > 0 ? increasedValue / resultYears : 0
+    const avgMonthlyGrowth = resultMonths > 0 ? increasedValue / resultMonths : 0
 
     const { piYearly, piMonthly, piDaily } = getPassiveIncome(result)
 
@@ -211,6 +230,12 @@ const resultItems = computed(() => {
         type: 'text',
       },
       { label: '增长率', key: 'increasedPercent', value: increasedPercent, type: 'text' },
+      {
+        label: '平均增长',
+        key: 'avgGrowth',
+        value: `年增 ${numberWithCommas(avgYearlyGrowth)} · 月增 ${numberWithCommas(avgMonthlyGrowth)}`,
+        type: 'text',
+      },
     ].filter(Boolean)
   }
   catch (e) {
@@ -474,6 +499,7 @@ async function saveImage() {
               v-model="formData[item.key]" class="calc-input" :type="item.type" :min="item.min"
               :max="item.max"
               :step="item.step"
+              :placeholder="item.placeholder"
             >
           </label>
         </div>
