@@ -16,20 +16,31 @@ interface IFireCalcFormData {
   currentValue: number
   // 每月存入款
   monthlySave: number
+  // 每月支出（用于计算FIRE所需资产）
+  monthlyExpense: number
   // 是否为目标存款模式
   isTargetMode: boolean
   // 迭代年数
   iterationYears: number
   // 目标存款
   targetValue: number
-  // 年化利率
+  // 年化收益率
   annualInterestRate: number
+  // 通胀率
+  inflationRate: number
   // 年终奖
   yearEndBonus: number
   // 年终奖发放月份
   yearEndBonusMonth: number
   // 年龄
   age: number
+}
+
+// 情景配置接口
+interface IScenario {
+  name: string
+  data: IFireCalcFormData
+  createTime: number
 }
 
 const echartsInstance = shallowRef()
@@ -39,10 +50,12 @@ const formData = useStorage<IFireCalcFormData>(
   {
     currentValue: 1000,
     monthlySave: 3000,
+    monthlyExpense: 5000,
     isTargetMode: false,
     iterationYears: 1,
     targetValue: 1000000,
     annualInterestRate: 0.025,
+    inflationRate: 0.02,
     yearEndBonus: 0,
     yearEndBonusMonth: 4,
     age: 0,
@@ -50,6 +63,48 @@ const formData = useStorage<IFireCalcFormData>(
   localStorage,
   { listenToStorageChanges: false },
 )
+
+// 情景配置列表
+const scenarios = useStorage<IScenario[]>('fire_calc_scenarios', [], localStorage)
+const currentScenarioName = ref('')
+
+// 情景管理函数
+function saveScenario() {
+  if (!currentScenarioName.value.trim()) {
+    alert('请输入情景名称')
+    return
+  }
+  const existingIndex = scenarios.value.findIndex(s => s.name === currentScenarioName.value.trim())
+  const scenario: IScenario = {
+    name: currentScenarioName.value.trim(),
+    data: { ...formData.value },
+    createTime: Date.now(),
+  }
+  if (existingIndex >= 0) {
+    scenarios.value[existingIndex] = scenario
+  }
+  else {
+    scenarios.value.push(scenario)
+  }
+}
+
+function loadScenario(name: string) {
+  const scenario = scenarios.value.find(s => s.name === name)
+  if (scenario) {
+    formData.value = { ...scenario.data }
+    currentScenarioName.value = name
+  }
+}
+
+function deleteScenario(name: string) {
+  const index = scenarios.value.findIndex(s => s.name === name)
+  if (index >= 0) {
+    scenarios.value.splice(index, 1)
+    if (currentScenarioName.value === name) {
+      currentScenarioName.value = ''
+    }
+  }
+}
 
 const formItems = computed(() => {
   return [
@@ -66,11 +121,18 @@ const formItems = computed(() => {
           min: 0,
         },
     {
-      label: '年化利率',
+      label: '年化收益率',
       key: 'annualInterestRate',
       type: 'number',
-      step: 0.01,
+      step: 0.001,
       tips: `${Number.parseFloat((formData.value.annualInterestRate * 100).toFixed(2))}%`,
+    },
+    {
+      label: '通胀率',
+      key: 'inflationRate',
+      type: 'number',
+      step: 0.001,
+      tips: `${Number.parseFloat((formData.value.inflationRate * 100).toFixed(2))}%`,
     },
     {
       label: '年终奖',
@@ -95,6 +157,12 @@ const formItems = computed(() => {
       type: 'number',
       min: 0,
     },
+    {
+      label: 'FIRE后月支出',
+      key: 'monthlyExpense',
+      type: 'number',
+      step: 1000,
+    },
   ].filter(Boolean)
 })
 
@@ -106,6 +174,9 @@ interface IStepData {
   age: number
   dateMoment?: moment.Moment
   isDecember?: boolean
+  monthlyGrowth?: number // 月度增长
+  totalDeposit?: number // 累计存入
+  totalInterest?: number // 累计利息
 }
 
 const stepData = ref<IStepData[]>([])
@@ -115,17 +186,21 @@ const resultValue = ref(0)
 function calculateData() {
   let result = Number(formData.value.currentValue)
   let age = Number(formData.value.age)
+  let totalDeposit = result // 累计存入（初始资产也算作存入）
+  let totalInterest = 0 // 累计利息
   stepData.value = []
   stepData.value.push({
     label: moment().format('YYYY-MM'),
     value: result,
     monthCount: 0,
     age: formData.value.age,
+    monthlyGrowth: 0,
+    totalDeposit: result,
+    totalInterest: 0,
   })
 
   let iterationMonths = formData.value.iterationYears * 12
   if (formData.value.isTargetMode) {
-    // iterationMonths = (formData.value.targetValue - formData.value.currentValue) / formData.value.monthlySave
     iterationMonths = +Infinity // 使用真实计算模式
   }
   for (let i = 0; i < iterationMonths; i++) {
@@ -137,19 +212,28 @@ function calculateData() {
     }
 
     const dateMoment = moment().add(count, 'months')
+    const prevValue = result
+
     // 年底更新一次利息
     const isDecember = dateMoment.month() === 11 // 判断月份是否为12月，月份从0开始计数
     const isBonusMonth = dateMoment.month() === (formData.value.yearEndBonusMonth || 4) - 1 // 年终奖发放月份
+
     if (isDecember) {
       age += 1
-
       // 计算年利率
-      result += Math.abs(result) * formData.value.annualInterestRate || 0
+      const interest = Math.abs(result) * formData.value.annualInterestRate || 0
+      result += interest
+      totalInterest += interest
     }
     if (isBonusMonth && formData.value.yearEndBonus) {
       result += formData.value.yearEndBonus
+      totalDeposit += formData.value.yearEndBonus
     }
     result += formData.value.monthlySave || 0
+    totalDeposit += formData.value.monthlySave || 0
+
+    const monthlyGrowth = result - prevValue
+
     stepData.value.push({
       label: `${dateMoment.format('YYYY-MM')}`,
       value: result,
@@ -157,6 +241,9 @@ function calculateData() {
       isDecember,
       monthCount: count,
       age,
+      monthlyGrowth,
+      totalDeposit,
+      totalInterest,
     })
 
     if (formData.value.isTargetMode && result >= formData.value.targetValue) {
@@ -193,7 +280,7 @@ const resultItems = computed(() => {
     const resultYears = resultMonths / 12
     const originalValue = formData.value.currentValue || 0
     const increasedValue = result - originalValue
-    const increasedPercent = `${Number.parseFloat((((result - originalValue) / originalValue) * 100).toFixed(2))}%`
+    const increasedPercent = originalValue > 0 ? `${Number.parseFloat((((result - originalValue) / originalValue) * 100).toFixed(2))}%` : '0%'
     const resultAge = stepData.value[stepData.value.length - 1]?.age
 
     // 计算平均增长
@@ -202,12 +289,34 @@ const resultItems = computed(() => {
 
     const { piYearly, piMonthly, piDaily } = getPassiveIncome(result)
 
+    // FIRE 相关计算
+    const monthlyExpense = formData.value.monthlyExpense || 0
+    const yearlyExpense = monthlyExpense * 12
+    const fireTargetAmount = yearlyExpense * 25 // 4%法则：需要年支出的25倍
+    const fireAchievementRate = fireTargetAmount > 0 ? `${Number.parseFloat(((originalValue / fireTargetAmount) * 100).toFixed(2))}%` : 'N/A'
+    const safeWithdrawal4 = result * 0.04 // 4%安全提取额
+    const safeWithdrawal3 = result * 0.03 // 3%保守提取额
+
+    // 累计数据
+    const lastStep = stepData.value[stepData.value.length - 1]
+    const totalDeposit = lastStep?.totalDeposit || 0
+    const totalInterest = lastStep?.totalInterest || 0
+    const depositContribution = totalDeposit > 0 ? `${Number.parseFloat(((totalDeposit / result) * 100).toFixed(2))}%` : '0%'
+    const interestContribution = result > 0 ? `${Number.parseFloat(((totalInterest / result) * 100).toFixed(2))}%` : '0%'
+
+    // 投资翻倍时间（72法则）
+    const rate = formData.value.annualInterestRate || 0
+    const doublingTime = rate > 0 ? Number.parseFloat((72 / (rate * 100)).toFixed(2)) : 0
+
+    // 资产能支撑多少年（按当前支出）
+    const yearsCanSustain = monthlyExpense > 0 ? result / (monthlyExpense * 12) : 0
+
     return [
       {
         label: '结果资产',
         key: 'resultValue',
         value: `${numberWithCommas(result)}`,
-        type: 'text',
+        type: 'highlight',
       },
       {
         label: '结果时间',
@@ -218,22 +327,56 @@ const resultItems = computed(() => {
       },
       { label: '目标年龄', key: 'resultAge', value: `${resultAge}`, type: 'text' },
       {
+        label: `FIRE达成率(FIRE目标: ${numberWithCommas(fireTargetAmount)})`,
+        key: 'fireAchievementRate',
+        value: `${fireAchievementRate}`,
+        type: 'highlight',
+        tips: `存够年支出的 25 倍，每年只花总资产的 4%，你的钱就能一辈子花不完。`,
+      },
+      {
+        label: '安全提取额(4%法则)',
+        key: 'safeWithdrawal',
+        value: `年提 ${numberWithCommas(safeWithdrawal4)} · 月提 ${numberWithCommas(safeWithdrawal4 / 12)}`,
+        tips: `3%保守: ${numberWithCommas(safeWithdrawal3 / 12)}/月`,
+        type: 'highlight',
+      },
+      {
+        label: '资产支撑年限',
+        key: 'yearsCanSustain',
+        value: `${Number.parseFloat(yearsCanSustain.toFixed(2))} 年`,
+        tips: `按月支出 ${numberWithCommas(monthlyExpense)} 计算`,
+        type: 'text',
+      },
+      {
         label: '被动收入',
         key: 'yearPassiveIncome',
         value: `年收 ${numberWithCommas(piYearly)} · 月收 ${numberWithCommas(piMonthly)} · 日收 ${numberWithCommas(piDaily)}`,
         type: 'text',
       },
       {
-        label: '增长值',
+        label: '增长',
         key: 'increasedValue',
-        value: `${numberWithCommas(increasedValue)}`,
+        value: `增长值: ${numberWithCommas(increasedValue)} · 增长率: ${increasedPercent}`,
         type: 'text',
       },
-      { label: '增长率', key: 'increasedPercent', value: increasedPercent, type: 'text' },
       {
         label: '平均增长',
         key: 'avgGrowth',
         value: `年增 ${numberWithCommas(avgYearlyGrowth)} · 月增 ${numberWithCommas(avgMonthlyGrowth)}`,
+        type: 'text',
+      },
+      {
+        label: '贡献占比',
+        key: 'contribution',
+        value: `存入 ${depositContribution} · 利息 ${interestContribution}`,
+        tips: `累计存入 ${numberWithCommas(totalDeposit)} · 累计利息 ${numberWithCommas(totalInterest)}`,
+        type: 'text',
+      },
+      {
+        label: '投资翻倍时间',
+        key: 'doublingTime',
+        value: `${doublingTime} 年`,
+        tips: '按72法则估算(72 法则是用 72 除以年化收益率，即可快速估算出投资本金翻倍所需年数的简单算法。)',
         type: 'text',
       },
     ].filter(Boolean)
@@ -397,6 +540,11 @@ function updateChart() {
   }
   // 刷新 Echarts 数据
   const list = stepData.value || []
+
+  // 计算目标资产线数据
+  const targetValue = formData.value.isTargetMode ? formData.value.targetValue : 0
+  const fireTargetAmount = (formData.value.monthlyExpense || 0) * 12 * 25 // FIRE目标线
+
   echartsInstance.value.setOption({
     xAxis: {
       data: list.map(i => i.label),
@@ -412,6 +560,38 @@ function updateChart() {
             {
               type: 'min',
             },
+          ],
+        },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: [
+            ...(targetValue > 0
+              ? [{
+                  yAxis: targetValue,
+                  label: {
+                    formatter: '目标资产',
+                    position: 'insideEndTop',
+                  },
+                  lineStyle: {
+                    color: '#52c41a',
+                    type: 'dashed',
+                  },
+                }]
+              : []),
+            ...(fireTargetAmount > 0
+              ? [{
+                  yAxis: fireTargetAmount,
+                  label: {
+                    formatter: 'FIRE目标',
+                    position: 'insideEndTop',
+                  },
+                  lineStyle: {
+                    color: '#fa8c16',
+                    type: 'dashed',
+                  },
+                }]
+              : []),
           ],
         },
       },
@@ -487,11 +667,38 @@ async function saveImage() {
             </button>
           </div>
         </div>
+
+        <!-- 情景管理 -->
+        <div class="scenario-section">
+          <div class="scenario-header">
+            <input
+              v-model="currentScenarioName"
+              class="calc-input scenario-name-input"
+              placeholder="情景名称"
+              type="text"
+            >
+            <button class="a-button" @click="saveScenario">
+              保存情景
+            </button>
+          </div>
+          <div v-if="scenarios.length > 0" class="scenario-list">
+            <span class="scenario-label">已保存情景:</span>
+            <div v-for="scenario in scenarios" :key="scenario.name" class="scenario-item">
+              <button class="a-button scenario-load-btn" @click="loadScenario(scenario.name)">
+                {{ scenario.name }}
+              </button>
+              <button class="a-button scenario-delete-btn" @click="deleteScenario(scenario.name)">
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="group-grid">
           <label v-for="item in formItems" :key="item.key" class="calc-label" :for="item.key">
             <span>
               {{ item.label || formatLabel(item.key) }}
-              <template v-if="item.tips">({{ item.tips }})</template>
+              <span v-if="item.tips" class="calc-label-tips">({{ item.tips }})</span>
             </span>
 
             <input
@@ -505,7 +712,7 @@ async function saveImage() {
         </div>
       </div>
 
-      <div class="calc-card">
+      <div class="calc-card results-card">
         <div class="card-title">
           <div>计算结果</div>
           <button class="a-button" @click="saveImage">
@@ -513,12 +720,19 @@ async function saveImage() {
           </button>
         </div>
         <div class="result-wrapper">
-          <div v-for="item in resultItems" :key="item.key" class="result-item">
+          <div
+            v-for="item in resultItems" :key="item.key"
+            class="result-item"
+            :class="{ 'result-highlight': item.type === 'highlight' }"
+          >
             <div class="result-label">
               {{ item.label || formatLabel(item.key) }}:
             </div>
             <div class="result-value">
               {{ item.value }}
+            </div>
+            <div v-if="item.tips" class="result-tips">
+              {{ item.tips }}
             </div>
           </div>
         </div>
@@ -554,6 +768,9 @@ async function saveImage() {
               <tr>
                 <th>日期</th>
                 <th>资产</th>
+                <th>月度增长</th>
+                <th>累计存入</th>
+                <th>累计利息</th>
                 <th>被动收入(年化)</th>
                 <th>年龄</th>
               </tr>
@@ -562,6 +779,11 @@ async function saveImage() {
               <tr v-for="item in filteredStepData" :key="item.monthCount">
                 <td>{{ item.label }}</td>
                 <td>{{ numberWithCommas(item.value) }}</td>
+                <td :class="{ positive: (item.monthlyGrowth || 0) > 0 }">
+                  {{ item.monthlyGrowth ? numberWithCommas(item.monthlyGrowth) : '-' }}
+                </td>
+                <td>{{ item.totalDeposit ? numberWithCommas(item.totalDeposit) : '-' }}</td>
+                <td>{{ item.totalInterest ? numberWithCommas(item.totalInterest) : '-' }}</td>
                 <td>{{ numberWithCommas(getPassiveIncome(item.value).piYearly) }}</td>
                 <td>{{ item.age }}</td>
               </tr>
@@ -630,23 +852,110 @@ async function saveImage() {
   }
 
   .result-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
   }
 
   .result-item {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    background-color: #f5f5f5;
+    border-radius: 6px;
+    border-left: 3px solid #d9d9d9;
 
     .result-label {
-      width: 100px;
-      text-align: right;
+      font-size: 12px;
+      color: #666;
     }
 
     .result-value {
-      flex: 1;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+      word-break: break-all;
+    }
+
+    .result-tips {
+      font-size: 12px;
+      color: #999;
+    }
+
+    &.result-highlight {
+      background: linear-gradient(135deg, #e6f7ff 0%, #f0f5ff 100%);
+      border-left-color: #5070dd;
+
+      .result-value {
+        color: #5070dd;
+        font-size: 16px;
+        font-weight: 600;
+      }
+    }
+  }
+
+  // 情景管理样式
+  .scenario-section {
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: #fafafa;
+    border-radius: 6px;
+    border: 1px dashed #d9d9d9;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .scenario-header {
+      display: flex;
+      gap: 8px;
+
+      .scenario-name-input {
+        flex: 1;
+        max-width: 200px;
+      }
+    }
+
+    .scenario-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+
+      .scenario-label {
+        font-size: 12px;
+        color: #666;
+      }
+
+      .scenario-item {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+
+        .scenario-load-btn {
+          font-size: 12px;
+          padding: 2px 8px;
+          background-color: #e6f7ff;
+          border-color: #91d5ff;
+          color: #096dd9;
+        }
+
+        .scenario-delete-btn {
+          font-size: 12px;
+          padding: 2px 6px;
+          color: #ff4d4f;
+          border-color: #ffa39e;
+          background-color: #fff1f0;
+        }
+      }
+    }
+  }
+
+  // 表格样式优化
+  .table-wrapper {
+    td.positive {
+      color: #52c41a;
+      font-weight: 500;
     }
   }
 
@@ -654,6 +963,11 @@ async function saveImage() {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    font-size: 14px;
+    .calc-label-tips {
+      font-size: 12px;
+      color: #999;
+    }
   }
 
   .calc-input {
