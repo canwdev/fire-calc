@@ -48,7 +48,7 @@ function loadExampleData() {
 
 <template>
   <div ref="dropZoneRef" class="fire-calc" :class="{ 'is-capturing': isCapturing, 'is-dragging': isOverDropZone }">
-    <h1>Financial Overview</h1>
+    <h1>FIRE Calculator</h1>
     <p class="sub">数据来源：localStorage（可打开 / 拖拽 JSON 覆盖，或保存为新文件）</p>
 
     <div class="toolbar">
@@ -177,7 +177,7 @@ function loadExampleData() {
     gap: 24px;
     align-items: flex-start;
 
-    > div {
+    >div {
       flex: 1 1 0;
       min-width: 0;
       display: flex;
@@ -185,7 +185,7 @@ function loadExampleData() {
       gap: 16px;
     }
 
-    > div:last-child {
+    >div:last-child {
       position: sticky;
       top: 16px;
       align-self: flex-start;
@@ -196,7 +196,7 @@ function loadExampleData() {
     .split {
       flex-direction: column;
 
-      > div:last-child {
+      >div:last-child {
         position: static;
       }
     }
@@ -299,7 +299,7 @@ function loadExampleData() {
     transform: rotate(90deg);
   }
 
-  tr.row-highlight > td {
+  tr.row-highlight>td {
     animation: rowFlash 2.2s ease-out;
   }
 
@@ -307,6 +307,7 @@ function loadExampleData() {
     0% {
       background-color: #fff3cd;
     }
+
     100% {
       background-color: transparent;
     }
@@ -380,7 +381,7 @@ function loadExampleData() {
     gap: 4px;
     font-size: 12px;
 
-    > span {
+    >span {
       color: var(--muted);
       font-weight: 600;
     }

@@ -290,6 +290,14 @@ function handleResize() {
   fireChart?.resize()
 }
 
+let updateTimer: ReturnType<typeof setTimeout> | undefined
+
+function debouncedUpdate() {
+  if (updateTimer)
+    clearTimeout(updateTimer)
+  updateTimer = setTimeout(update, 300)
+}
+
 onMounted(() => {
   fcChart = echarts.init(forecastRef.value!)
   fireChart = echarts.init(fireRef.value!)
@@ -299,11 +307,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  if (updateTimer)
+    clearTimeout(updateTimer)
   fcChart?.dispose()
   fireChart?.dispose()
 })
 
-watch([form, data], update, { deep: true })
+watch([form, data], debouncedUpdate, { deep: true })
 </script>
 
 <template>
