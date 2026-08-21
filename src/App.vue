@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import packageJson from '../package.json'
+import { provide } from 'vue'
+import { snapdom } from '@zumer/snapdom'
 import { useRoute } from 'vue-router'
+import { snapdomKey } from '@/components/FireCalc/types'
+import packageJson from '../package.json'
+
+provide(snapdomKey, snapdom)
 
 const route = useRoute()
 const version = packageJson.version
