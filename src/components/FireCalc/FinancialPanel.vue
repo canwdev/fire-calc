@@ -63,6 +63,118 @@ const rows = computed<IRow[]>(() => {
   })
 })
 
+interface IEntryDraft {
+  date: string
+  net_assets: string
+  remark: string
+  detailed_data: IDetailDraft[]
+}
+
+interface IDetailDraft {
+  type: string
+  net_assets: string
+  not_included: boolean
+  remark: string
+}
+
+const editMode = ref(false)
+const draft = ref<IEntryDraft[]>([])
+const editExpanded = ref<Set<number>>(new Set())
+
+function parseNum(s: string): number {
+  const n = Number(s)
+  return Number.isFinite(n) ? n : 0
+}
+
+function isInvalidDate(s: unknown): boolean {
+  const v = String(s ?? '').trim()
+  return v !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(v)
+}
+
+function isInvalidNum(s: unknown): boolean {
+  const v = String(s ?? '').trim()
+  return v !== '' && !Number.isFinite(Number(v))
+}
+
+function toggleEdit(idx: number) {
+  const s = new Set(editExpanded.value)
+  if (s.has(idx))
+    s.delete(idx)
+  else
+    s.add(idx)
+  editExpanded.value = s
+}
+
+function enterEdit() {
+  draft.value = data.value.fiancial_data.map(e => ({
+    date: e.date,
+    net_assets: String(e.net_assets ?? ''),
+    remark: e.remark ?? '',
+    detailed_data: (e.detailed_data ?? []).map(d => ({
+      type: d.type,
+      net_assets: String(d.net_assets ?? ''),
+      not_included: d.not_included ?? false,
+      remark: d.remark ?? '',
+    })),
+  }))
+  editExpanded.value = new Set()
+  editMode.value = true
+}
+
+function cancelEdit() {
+  editMode.value = false
+  draft.value = []
+  editExpanded.value = new Set()
+}
+
+function saveEdit() {
+  data.value.fiancial_data = draft.value
+    .filter(e => e.date.trim() !== '' && !isInvalidDate(e.date))
+    .map(e => ({
+      date: e.date.trim(),
+      net_assets: parseNum(e.net_assets),
+      remark: e.remark,
+      detailed_data: (e.detailed_data ?? [])
+        .filter(d => d.type.trim() !== '')
+        .map(d => ({
+          type: d.type.trim(),
+          net_assets: parseNum(d.net_assets),
+          not_included: d.not_included,
+          remark: d.remark,
+        })),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  editMode.value = false
+  editExpanded.value = new Set()
+}
+
+function addEntry() {
+  draft.value.push({
+    date: '',
+    net_assets: '',
+    remark: '',
+    detailed_data: [],
+  })
+}
+
+function removeEntry(idx: number) {
+  draft.value.splice(idx, 1)
+  editExpanded.value = new Set()
+}
+
+function addDetail(entry: IEntryDraft) {
+  entry.detailed_data.push({
+    type: '',
+    net_assets: '',
+    not_included: false,
+    remark: '',
+  })
+}
+
+function removeDetail(entry: IEntryDraft, idx: number) {
+  entry.detailed_data.splice(idx, 1)
+}
+
 function updateCharts() {
   const fin = data.value.fiancial_data
   if (!lineChart || !barChart)
@@ -108,7 +220,7 @@ function updateCharts() {
     if (e.detailed_data?.length) {
       detailedDates.push(e.date)
       e.detailed_data.forEach((d) => {
-        ;(typeMap[d.type] ??= {})[e.date] = d.net_assets
+        ; (typeMap[d.type] ??= {})[e.date] = d.net_assets
       })
     }
   })
@@ -211,8 +323,83 @@ watch(data, updateCharts, { deep: true })
     <div class="split">
       <div class="col">
         <div class="card">
-          <div class="card-title">净资产记录<span class="badge">{{ data.fiancial_data.length }} 条</span></div>
-          <div class="table-scroll">
+          <div class="card-title">
+            <span>净资产记录<span class="badge">{{ data.fiancial_data.length }} 条</span></span>
+            <button v-if="!editMode" class="a-button edit-toggle" @click="enterEdit">编辑</button>
+          </div>
+
+          <div v-if="editMode" class="edit-block">
+            <div class="edit-actions">
+              <button class="a-button" @click="addEntry">＋ 新增记录</button>
+              <span class="edit-hint">编辑中，图表将在保存后更新</span>
+              <button class="a-button save" @click="saveEdit">保存</button>
+              <button class="a-button" @click="cancelEdit">取消</button>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th class="num">净资产</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="(entry, i) in draft" :key="i">
+                    <tr>
+                      <td><input v-model="entry.date" type="date" class="edit-input"
+                          :class="{ 'input-error': isInvalidDate(entry.date) }"></td>
+                      <td class="num"><input v-model="entry.net_assets" type="number" min="0"
+                          class="edit-input edit-input-num" :class="{ 'input-error': isInvalidNum(entry.net_assets) }">
+                      </td>
+                      <td><textarea v-model="entry.remark" rows="1" class="edit-input edit-textarea"
+                          placeholder="备注"></textarea></td>
+                      <td>
+                        <button class="a-button" @click="toggleEdit(i)">明细 {{ editExpanded.has(i) ? '▾' : '▸'
+                          }}</button>
+                        <button class="a-button" @click="removeEntry(i)">删除</button>
+                      </td>
+                    </tr>
+                    <tr v-if="editExpanded.has(i)" class="detail-edit-row">
+                      <td colspan="4">
+                        <div class="inner">
+                          <table class="sub-table">
+                            <thead>
+                              <tr>
+                                <th>类型</th>
+                                <th class="num">净资产</th>
+                                <th>不计入</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-for="(d, j) in entry.detailed_data" :key="j">
+                                <td><input v-model="d.type" class="edit-input" placeholder="类型"></td>
+                                <td class="num"><input v-model="d.net_assets" type="number" min="0"
+                                    class="edit-input edit-input-num"
+                                    :class="{ 'input-error': isInvalidNum(d.net_assets) }"></td>
+                                <td><input v-model="d.not_included" type="checkbox"></td>
+                                <td><textarea v-model="d.remark" rows="1" class="edit-input edit-textarea"
+                                    placeholder="备注"></textarea></td>
+                                <td><button class="a-button" @click="removeDetail(entry, j)">删除</button></td>
+                              </tr>
+                              <tr>
+                                <td colspan="5"><button class="a-button" @click="addDetail(entry)">＋ 新增明细</button></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div v-else class="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -227,15 +414,17 @@ watch(data, updateCharts, { deep: true })
                 <template v-for="row in rows" :key="row.entry.date">
                   <tr
                     :class="{ clickable: row.entry.detailed_data?.length, 'row-highlight': flashDate === row.entry.date }"
-                    @click="row.entry.detailed_data?.length && toggle(row.entry.date)"
-                  >
+                    @click="row.entry.detailed_data?.length && toggle(row.entry.date)">
                     <td>
-                      <span v-if="row.entry.detailed_data?.length" class="chevron" :class="{ open: expanded.has(row.entry.date) }">▸</span>
+                      <span v-if="row.entry.detailed_data?.length" class="chevron"
+                        :class="{ open: expanded.has(row.entry.date) }">▸</span>
                       {{ row.entry.date }}
                     </td>
                     <td class="num">{{ fmtNum(row.entry.net_assets, 2) }}</td>
-                    <td class="num" :class="{ neg: row.qoq && row.qoq.delta < 0 }">{{ row.qoq ? fmtNum(row.qoq.delta, 2) : '—' }}</td>
-                    <td class="num" :class="{ neg: row.qoq && row.qoq.delta < 0 }">{{ row.qoq ? `${row.qoq.rate.toFixed(2)}%` : '—' }}</td>
+                    <td class="num" :class="{ neg: row.qoq && row.qoq.delta < 0 }">{{ row.qoq ? fmtNum(row.qoq.delta, 2)
+                      : '—' }}</td>
+                    <td class="num" :class="{ neg: row.qoq && row.qoq.delta < 0 }">{{ row.qoq ?
+                      `${row.qoq.rate.toFixed(2)}%` : '—' }}</td>
                     <td class="remark">{{ row.entry.remark || '—' }}</td>
                   </tr>
                   <tr v-if="row.entry.detailed_data?.length && expanded.has(row.entry.date)" class="detail-row">
@@ -245,7 +434,6 @@ watch(data, updateCharts, { deep: true })
                           <thead>
                             <tr>
                               <th>类型</th>
-                              <th>日期</th>
                               <th class="num">净资产</th>
                               <th>不计入</th>
                               <th>备注</th>
@@ -254,13 +442,12 @@ watch(data, updateCharts, { deep: true })
                           <tbody>
                             <tr v-for="d in row.entry.detailed_data" :key="d.type">
                               <td>{{ d.type }}</td>
-                              <td>{{ d.date }}</td>
                               <td class="num">{{ fmtNum(d.net_assets, 2) }}</td>
                               <td>{{ d.not_included ? '是' : '—' }}</td>
                               <td class="remark">{{ d.remark || '—' }}</td>
                             </tr>
                             <tr class="subtotal">
-                              <td colspan="2">小计</td>
+                              <td>小计</td>
                               <td class="num">{{ fmtNum(row.detailSubtotal, 2) }}</td>
                               <td colspan="2"></td>
                             </tr>
@@ -304,5 +491,76 @@ watch(data, updateCharts, { deep: true })
   .col {
     min-width: 0;
   }
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-toggle {
+  margin-left: auto;
+}
+
+.edit-actions {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+
+  .save {
+    border-color: #5070dd;
+    color: #5070dd;
+
+    &:hover {
+      background: #eef1ff;
+    }
+  }
+}
+
+.edit-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.edit-input {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fff;
+  width: 100%;
+
+  &:focus {
+    outline: none;
+    border-color: #999;
+  }
+
+  &.input-error {
+    border-color: #c0392b;
+    background: #fdf3f2;
+  }
+}
+
+.edit-input-num {
+  width: 120px;
+  text-align: right;
+}
+
+.edit-textarea {
+  display: block;
+}
+
+.detail-edit-row td {
+  background: #fafafa;
 }
 </style>

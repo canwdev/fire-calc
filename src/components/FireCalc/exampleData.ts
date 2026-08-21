@@ -79,14 +79,12 @@ function generateFinancialData(now: Date): IFinancialEntry[] {
       detailed_data: [
         ...ASSET_TYPES.map((type, idx) => ({
           type,
-          date,
           net_assets: Math.max(0, amounts[idx]),
           remark: '',
           not_included: false,
         })),
         ...EXTRA_TYPES.map(type => ({
           type,
-          date,
           net_assets: round2(rand(3000, 150000)),
           remark: '',
           not_included: true,

@@ -3,7 +3,6 @@ import type { CaptureResult, SnapdomOptions } from '@zumer/snapdom'
 
 export interface IDetailData {
   type: string
-  date: string
   net_assets: number
   remark?: string
   not_included?: boolean
