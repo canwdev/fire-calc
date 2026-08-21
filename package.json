@@ -18,24 +18,24 @@
     "lint": "eslint src/**/*.{ts,vue} --fix"
   },
   "dependencies": {
-    "@vueuse/core": "^14.2.1",
-    "@zumer/snapdom": "^2.8.0",
-    "echarts": "^6.0.0",
+    "@vueuse/core": "^14.4.0",
+    "@zumer/snapdom": "^2.24.3",
+    "echarts": "^6.1.0",
     "moment": "^2.30.1",
-    "vite": "^8.0.8",
-    "vue": "^3.5.32"
+    "vite": "^8.2.2",
+    "vue": "^3.5.41"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^8.2.0",
-    "@tsconfig/node22": "^22.0.2",
-    "@types/node": "^25.6.0",
-    "@vitejs/plugin-vue": "^6.0.1",
+    "@tsconfig/node22": "^22.0.6",
+    "@types/node": "^25.9.5",
+    "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
     "eslint": "^10.2.1",
     "sass": "^1.93.2",
     "typescript": "~6.0.3",
-    "unplugin-auto-import": "^21.0.0",
+    "unplugin-auto-import": "^21.1.0",
     "vite-plugin-singlefile": "^2.3.3",
-    "vue-tsc": "^3.1.1"
+    "vue-tsc": "^3.3.10"
   }
 }
