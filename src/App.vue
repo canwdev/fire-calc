@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import FireCalc from '@/components/FireCalc.vue'
 import packageJson from '../package.json'
+import { useRoute } from 'vue-router'
 
+const route = useRoute()
 const version = packageJson.version
 const githubUrl = packageJson.repository?.url
 </script>
 
 <template>
-  <FireCalc />
+  <RouterView />
   <footer class="app-footer">
     <span class="version">v{{ version }}</span>
+    <RouterLink v-if="route.name === 'old'" to="/" class="version-link">go to new version</RouterLink>
+    <RouterLink v-if="route.name === 'home'" to="/old" class="version-link">back to old version</RouterLink>
     <a v-if="githubUrl" :href="githubUrl" target="_blank" rel="noopener noreferrer" class="github-link">
       GitHub
     </a>
@@ -20,11 +23,13 @@ const githubUrl = packageJson.repository?.url
 html {
   position: relative;
 }
+
 body {
   margin: 0;
   font-family: "PingFang SC", Inter, Avenir, Helvetica, Arial, sans-serif;
   touch-action: manipulation;
 }
+
 * {
   box-sizing: border-box;
 }
@@ -49,6 +54,17 @@ body {
   color: #666;
   text-decoration: none;
   transition: color 0.2s;
+}
+
+.app-footer .version-link {
+  color: #666;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.app-footer .version-link:hover {
+  color: #333;
+  text-decoration: underline;
 }
 
 .app-footer .github-link:hover {
