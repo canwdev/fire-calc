@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
 import type { IFinancialEntry } from './types'
 import { financialStoreKey } from './types'
+import { initChartWhenReady, type Chart } from './useChart'
 import { fmtNum, subtotal } from './utils'
 
-type Chart = ReturnType<typeof echarts.init>
+type ChartOption = Parameters<Chart['setOption']>[0]
 
 const store = inject(financialStoreKey)!
 const { data } = store
@@ -212,7 +212,7 @@ function updateCharts() {
       itemStyle: { color: '#333' },
       areaStyle: { color: 'rgba(51,51,51,0.06)' },
     }],
-  })
+  }, { replaceMerge: ['series'] })
 
   const detailedDates: string[] = []
   const typeMap: Record<string, Record<string, number>> = {}
@@ -252,14 +252,18 @@ function updateCharts() {
       splitLine: { lineStyle: { color: '#eee' } },
     },
     series: typeSeries,
-  })
+  }, { replaceMerge: ['series'] })
+
+  if (!detailedDates.length) {
+    pieVisible.value = false
+    currentPieDate.value = null
+    pendingPieOption = null
+    pieChart?.clear()
+  }
 }
 
-function showPie(date: string) {
-  const entry = data.value.fiancial_data.find(e => e.date === date)
-  if (!entry?.detailed_data?.length || !pieChart)
-    return
-  pieChart.setOption({
+function pieOption(entry: IFinancialEntry): ChartOption {
+  return {
     tooltip: {
       trigger: 'item',
       valueFormatter: (v: number) => v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }),
@@ -270,49 +274,75 @@ function showPie(date: string) {
       type: 'pie',
       radius: ['30%', '62%'],
       center: ['50%', '44%'],
-      data: entry.detailed_data.map(d => ({ name: d.type, value: d.net_assets })),
+      data: (entry.detailed_data ?? []).map(d => ({ name: d.type, value: d.net_assets })),
       label: { fontSize: 10, color: '#666' },
     }],
-  })
+  }
+}
+
+let pendingPieOption: ChartOption | null = null
+
+function showPie(date: string) {
+  const entry = data.value.fiancial_data.find(e => e.date === date)
+  if (!entry?.detailed_data?.length)
+    return
+  const option = pieOption(entry)
   pieTitle.value = `资产构成（${date}）`
   currentPieDate.value = date
   pieVisible.value = true
-  pieChart.resize()
+  if (pieChart) {
+    pieChart.setOption(option, true)
+    pieChart.resize()
+  }
+  else {
+    // 饼图首次显示时容器才有尺寸、图表才会创建，先缓存配置
+    pendingPieOption = option
+  }
 }
 
-function handleResize() {
-  lineChart?.resize()
-  barChart?.resize()
-  pieChart?.resize()
-}
+const chartDisposers: (() => void)[] = []
 
 onMounted(() => {
-  lineChart = echarts.init(lineRef.value!)
-  barChart = echarts.init(barRef.value!)
-  pieChart = echarts.init(pieRef.value!)
+  if (lineRef.value) {
+    chartDisposers.push(initChartWhenReady(lineRef.value, (chart) => {
+      lineChart = chart
+      chart.on('click', (params) => {
+        flashRow(String(params.name))
+      })
+      updateCharts()
+    }))
+  }
 
-  lineChart.on('click', (params) => {
-    flashRow(String(params.name))
-  })
+  if (barRef.value) {
+    chartDisposers.push(initChartWhenReady(barRef.value, (chart) => {
+      barChart = chart
+      chart.on('click', (params) => {
+        showPie(String(params.name))
+      })
+      updateCharts()
+    }))
+  }
 
-  barChart.on('click', (params) => {
-    showPie(String(params.name))
-  })
+  if (pieRef.value) {
+    chartDisposers.push(initChartWhenReady(pieRef.value, (chart) => {
+      pieChart = chart
+      chart.on('click', () => {
+        if (currentPieDate.value)
+          flashRow(currentPieDate.value)
+      })
+      if (pendingPieOption) {
+        chart.setOption(pendingPieOption, true)
+        pendingPieOption = null
+        chart.resize()
+      }
+    }))
+  }
 
-  pieChart.on('click', () => {
-    if (currentPieDate.value)
-      flashRow(currentPieDate.value)
-  })
-
-  updateCharts()
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  lineChart?.dispose()
-  barChart?.dispose()
-  pieChart?.dispose()
+  chartDisposers.forEach(dispose => dispose())
+  chartDisposers.length = 0
 })
 
 watch(data, updateCharts, { deep: true })
@@ -357,7 +387,7 @@ watch(data, updateCharts, { deep: true })
                           placeholder="备注"></textarea></td>
                       <td>
                         <button class="a-button" @click="toggleEdit(i)">明细 {{ editExpanded.has(i) ? '▾' : '▸'
-                          }}</button>
+                        }}</button>
                         <button class="a-button" @click="removeEntry(i)">删除</button>
                       </td>
                     </tr>
@@ -468,7 +498,7 @@ watch(data, updateCharts, { deep: true })
           <div ref="lineRef" class="chart" />
         </div>
         <div class="card">
-          <div class="card-title">资产分布（按类型，仅含明细日期）</div>
+          <div class="card-title">资产分布</div>
           <div ref="barRef" class="chart" />
         </div>
         <div v-show="pieVisible" class="card">

@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue'
 import { useDropZone, useFileDialog, useStorage, useSupported } from '@vueuse/core'
 import { downloadJson } from '@/utils'
 import type { IFinancialData, IFinancialStore } from './types'
-import { generateExampleData } from './exampleData'
+import { generateExampleData, generateMinimalExampleData } from './exampleData'
 
 const STORAGE_KEY = 'fire_calc_financial_data'
 
@@ -30,7 +30,7 @@ async function extractHandle(event: DragEvent): Promise<FileSystemFileHandle | n
 }
 
 export function useFinancialData(): IFinancialStore {
-  const data = useStorage<IFinancialData>(STORAGE_KEY, generateExampleData, localStorage, {
+  const data = useStorage<IFinancialData>(STORAGE_KEY, generateMinimalExampleData, localStorage, {
     listenToStorageChanges: false,
   })
   const status = ref('')
@@ -138,8 +138,18 @@ export function useFinancialData(): IFinancialStore {
   }
 
   function loadExample() {
+    fileHandle.value = null
     data.value = generateExampleData()
-    status.value = '已加载示例数据'
+    status.value = '已加载完整示例数据'
+  }
+
+  function clearData() {
+    fileHandle.value = null
+    data.value = {
+      fiancial_data: [],
+      items_of_long_term_use: [],
+    }
+    status.value = '已清空数据'
   }
 
   return {
@@ -153,5 +163,7 @@ export function useFinancialData(): IFinancialStore {
     saveFile,
     saveAsFile,
     loadExample,
+    clearData,
+    applyData,
   }
 }

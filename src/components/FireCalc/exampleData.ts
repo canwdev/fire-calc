@@ -1,5 +1,8 @@
 import type { IFinancialData, IFinancialEntry, ILongTermItem } from './types'
 
+/** 示例数据统一前缀，便于与真实数据区分 */
+const EXAMPLE_PREFIX = '示例 · '
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
@@ -78,13 +81,13 @@ function generateFinancialData(now: Date): IFinancialEntry[] {
       remark: '',
       detailed_data: [
         ...ASSET_TYPES.map((type, idx) => ({
-          type,
+          type: `${EXAMPLE_PREFIX}${type}`,
           net_assets: Math.max(0, amounts[idx]),
           remark: '',
           not_included: false,
         })),
         ...EXTRA_TYPES.map(type => ({
-          type,
+          type: `${EXAMPLE_PREFIX}${type}`,
           net_assets: round2(rand(3000, 150000)),
           remark: '',
           not_included: true,
@@ -109,7 +112,7 @@ function generateItems(now: Date): ILongTermItem[] {
       retire_date = `${ry}-${pad(randInt(1, 12))}-${pad(randInt(1, 28))}`
     }
     return {
-      name: spec.name,
+      name: `${EXAMPLE_PREFIX}${spec.name}`,
       date: `${year}-${pad(month)}-${pad(day)}`,
       price,
       remark: '',
@@ -119,6 +122,38 @@ function generateItems(now: Date): ILongTermItem[] {
   })
 }
 
+/** 极简示例：1 条净资产记录（含 3 条明细）+ 1 件物品，作为默认数据 */
+export function generateMinimalExampleData(): IFinancialData {
+  const now = new Date()
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`
+
+  return {
+    fiancial_data: [
+      {
+        date,
+        net_assets: 180000,
+        remark: '示例数据，点击「示例」可加载完整示例',
+        detailed_data: [
+          { type: `${EXAMPLE_PREFIX}银行 A`, net_assets: 120000, remark: '', not_included: false },
+          { type: `${EXAMPLE_PREFIX}基金平台`, net_assets: 60000, remark: '', not_included: false },
+          { type: `${EXAMPLE_PREFIX}医保`, net_assets: 20000, remark: '', not_included: true },
+        ],
+      },
+    ],
+    items_of_long_term_use: [
+      {
+        name: `${EXAMPLE_PREFIX}笔记本电脑`,
+        date: `${now.getFullYear() - 2}-06-15`,
+        price: 8999,
+        remark: '',
+        wight: 1800,
+        retire_date: null,
+      },
+    ],
+  }
+}
+
+/** 完整示例：18 个月的净资产记录 + 10 件物品 */
 export function generateExampleData(): IFinancialData {
   const now = new Date()
   return {

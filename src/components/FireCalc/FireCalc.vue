@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { inject, nextTick, provide, ref } from 'vue'
 import FinancialPanel from './FinancialPanel.vue'
+import GistDialog from './GistDialog.vue'
 import ItemsPanel from './ItemsPanel.vue'
 import PlanPanel from './PlanPanel.vue'
 import { financialStoreKey, snapdomKey } from './types'
@@ -15,11 +16,12 @@ const snapdomFn = inject(snapdomKey)
 
 const tabs = [
   { key: 'fin', label: '资产' },
+  { key: 'plan', label: 'FIRE 规划' },
   { key: 'items', label: '物品' },
-  { key: 'plan', label: '规划' },
 ]
 const activeTab = ref('fin')
 const isCapturing = ref(false)
+const gistOpen = ref(false)
 
 function switchTab(key: string) {
   activeTab.value = key
@@ -41,23 +43,29 @@ async function saveImage() {
 }
 
 function loadExampleData() {
-  if (window.confirm('确定加载示例数据？当前数据将被覆盖。'))
+  if (window.confirm('确定加载完整示例数据？当前数据将被覆盖。'))
     store.loadExample()
+}
+
+function clearData() {
+  if (window.confirm('确定清空所有数据？该操作不可撤销。'))
+    store.clearData()
 }
 </script>
 
 <template>
   <div ref="dropZoneRef" class="fire-calc" :class="{ 'is-capturing': isCapturing, 'is-dragging': isOverDropZone }">
     <h1>FIRE Calculator</h1>
-    <p class="sub">数据来源：localStorage（可打开 / 拖拽 JSON 覆盖，或保存为新文件）</p>
 
     <div class="toolbar">
       <button class="a-button" @click="store.openFile">打开 JSON</button>
       <button v-if="isSupported && fileHandle" class="a-button" @click="store.saveFile">保存</button>
       <button class="a-button" @click="store.saveAsFile">另存为新 JSON</button>
-      <button class="a-button" @click="loadExampleData">示例</button>
-      <button class="a-button" @click="saveImage">保存图片</button>
+      <button class="a-button" @click="gistOpen = true">Gist</button>
       <span class="status">{{ status }}</span>
+      <button class="a-button toolbar-end" @click="loadExampleData">示例</button>
+      <button class="a-button" @click="clearData">清空</button>
+      <button class="a-button" @click="saveImage">保存图片</button>
     </div>
 
     <div class="tabs">
@@ -71,6 +79,8 @@ function loadExampleData() {
     <FinancialPanel v-show="activeTab === 'fin'" />
     <ItemsPanel v-show="activeTab === 'items'" />
     <PlanPanel v-show="activeTab === 'plan'" />
+
+    <GistDialog v-model:open="gistOpen" />
   </div>
 </template>
 
@@ -93,14 +103,8 @@ function loadExampleData() {
   h1 {
     font-size: 18px;
     font-weight: 600;
-    margin: 0 0 4px;
-    letter-spacing: 0.02em;
-  }
-
-  .sub {
-    font-size: 12px;
-    color: var(--muted);
     margin: 0 0 16px;
+    letter-spacing: 0.02em;
   }
 
   .toolbar {
@@ -113,6 +117,11 @@ function loadExampleData() {
     .status {
       font-size: 12px;
       color: var(--muted);
+    }
+
+    // 示例 / 清空 / 保存图片 靠右显示
+    .toolbar-end {
+      margin-left: auto;
     }
   }
 
@@ -193,12 +202,65 @@ function loadExampleData() {
   }
 
   @media (max-width: 900px) {
+    padding: 12px 12px 24px;
+
+    h1 {
+      font-size: 17px;
+      margin-bottom: 12px;
+    }
+
+    .toolbar {
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .tabs {
+      margin-bottom: 16px;
+
+      button {
+        padding: 8px 12px;
+      }
+    }
+
+    .card-title {
+      padding: 8px 10px;
+    }
+
     .split {
       flex-direction: column;
+      gap: 16px;
+      align-items: stretch;
 
       >div:last-child {
         position: static;
+        align-self: stretch;
       }
+    }
+
+    // 表格不限制宽度，超出容器时可左右滚动
+    .table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+      width: max-content;
+      min-width: 100%;
+    }
+
+    // 列不被压塌：给单元格一个最小宽度并禁止换行，超出容器时左右滚动
+    th,
+    td {
+      min-width: 72px;
+      padding: 6px 10px;
+      white-space: nowrap;
+    }
+
+    // 备注允许换行并限宽，避免长文本把表格撑得过宽
+    .remark {
+      min-width: 120px;
+      max-width: 200px;
+      white-space: pre-line;
     }
   }
 

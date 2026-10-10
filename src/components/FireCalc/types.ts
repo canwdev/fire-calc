@@ -42,6 +42,8 @@ export interface IFinancialStore {
   saveFile: () => Promise<void>
   saveAsFile: () => Promise<void>
   loadExample: () => void
+  clearData: () => void
+  applyData: (json: IFinancialData) => void
 }
 
 export const financialStoreKey: InjectionKey<IFinancialStore> = Symbol('financial-store')

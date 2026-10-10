@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
-import * as echarts from 'echarts'
 import { financialStoreKey } from './types'
+import { initChartWhenReady, type Chart } from './useChart'
 import {
   calcFIRE,
   esc,
@@ -16,8 +16,6 @@ import {
   simulateLifecycle,
   trendForecast,
 } from './utils'
-
-type Chart = ReturnType<typeof echarts.init>
 
 const store = inject(financialStoreKey)!
 const { data } = store
@@ -51,12 +49,12 @@ function update() {
   if (!fcChart || !fireChart)
     return
   const fin = data.value.fiancial_data
-  if (!fin.length)
-    return
+  const hasFin = fin.length > 0
+  const now = new Date()
 
-  const lastEntry = fin[fin.length - 1]
-  const lastDate = lastEntry.date
-  const lastVal = lastEntry.net_assets
+  const lastEntry = hasFin ? fin[fin.length - 1] : null
+  const lastDate = lastEntry ? lastEntry.date : fmtDate(new Date(now.getFullYear(), now.getMonth(), 1))
+  const lastVal = lastEntry ? lastEntry.net_assets : 0
   const baseMK = monthKey(parseDate(lastDate))
   const finDates = fin.map(e => e.date)
   const finVals = fin.map(e => e.net_assets)
@@ -72,9 +70,11 @@ function update() {
   const horizon = Math.max(1, Math.round(years * 12))
 
   const last12 = fin.slice(-12)
-  const span = monthKey(parseDate(lastDate)) - monthKey(parseDate(last12[0].date))
+  const span = hasFin ? monthKey(parseDate(lastDate)) - monthKey(parseDate(last12[0].date)) : 0
   const avgMonthly = span > 0 ? (lastVal - last12[0].net_assets) / span : 0
-  saveHint.value = `参考：近 ${last12.length} 条记录月均净增约 ${avgMonthly.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 元/月（含投资收益）`
+  saveHint.value = hasFin
+    ? `参考：近 ${last12.length} 条记录月均净增约 ${avgMonthly.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 元/月（含投资收益）`
+    : '参考：暂无历史记录，默认按 0 元资产起算'
 
   const monthLabels = (startMK: number, months: number) => {
     const arr: string[] = []
@@ -246,7 +246,7 @@ function update() {
   }, true)
 
   const m: { label: string, value: string, sub?: string }[] = []
-  m.push({ label: '当前净资产', value: fmtNum(lastVal, 0), sub: lastDate })
+  m.push({ label: '当前净资产', value: fmtNum(lastVal, 0), sub: hasFin ? lastDate : '暂无记录，按 0 元起算' })
   m.push({
     label: 'FIRE 目标金额',
     value: expense > 0 ? fmtNum(fire.target, 0) : '—',
@@ -285,11 +285,6 @@ function update() {
   })
 }
 
-function handleResize() {
-  fcChart?.resize()
-  fireChart?.resize()
-}
-
 let updateTimer: ReturnType<typeof setTimeout> | undefined
 
 function debouncedUpdate() {
@@ -298,19 +293,30 @@ function debouncedUpdate() {
   updateTimer = setTimeout(update, 300)
 }
 
+const chartDisposers: (() => void)[] = []
+
 onMounted(() => {
-  fcChart = echarts.init(forecastRef.value!)
-  fireChart = echarts.init(fireRef.value!)
-  update()
-  window.addEventListener('resize', handleResize)
+  if (forecastRef.value) {
+    chartDisposers.push(initChartWhenReady(forecastRef.value, (chart) => {
+      fcChart = chart
+      update()
+    }))
+  }
+
+  if (fireRef.value) {
+    chartDisposers.push(initChartWhenReady(fireRef.value, (chart) => {
+      fireChart = chart
+      update()
+    }))
+  }
+
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
   if (updateTimer)
     clearTimeout(updateTimer)
-  fcChart?.dispose()
-  fireChart?.dispose()
+  chartDisposers.forEach(dispose => dispose())
+  chartDisposers.length = 0
 })
 
 watch([form, data], debouncedUpdate, { deep: true })
