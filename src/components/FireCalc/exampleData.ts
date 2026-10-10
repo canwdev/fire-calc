@@ -1,4 +1,4 @@
-import type { IFinancialData, IFinancialEntry, ILongTermItem } from './types'
+import { DEFAULT_PLAN_SETTINGS, type IFinancialData, type IFinancialEntry, type ILongTermItem } from './types'
 
 /** 示例数据统一前缀，便于与真实数据区分 */
 const EXAMPLE_PREFIX = '示例 · '
@@ -150,6 +150,7 @@ export function generateMinimalExampleData(): IFinancialData {
         retire_date: null,
       },
     ],
+    plan: { ...DEFAULT_PLAN_SETTINGS },
   }
 }
 
@@ -159,5 +160,6 @@ export function generateExampleData(): IFinancialData {
   return {
     fiancial_data: generateFinancialData(now),
     items_of_long_term_use: generateItems(now),
+    plan: { ...DEFAULT_PLAN_SETTINGS },
   }
 }

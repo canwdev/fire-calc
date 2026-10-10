@@ -1,10 +1,13 @@
 import { ref, shallowRef } from 'vue'
 import { useDropZone, useFileDialog, useStorage, useSupported } from '@vueuse/core'
 import { downloadJson } from '@/utils'
-import type { IFinancialData, IFinancialStore } from './types'
+import type { IFinancialData, IFinancialStore, IPlanSettings } from './types'
 import { generateExampleData, generateMinimalExampleData } from './exampleData'
+import { mergePlanSettings } from './utils'
 
 const STORAGE_KEY = 'fire_calc_financial_data'
+/** 旧版本把 FIRE 规划参数单独存在这个 key 下，现已并入 IFinancialData.plan */
+const LEGACY_PLAN_KEY = 'fire_calc_plan_form'
 
 type FSWindow = Window & {
   showOpenFilePicker: (options?: { types?: { description?: string, accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>
@@ -35,6 +38,29 @@ export function useFinancialData(): IFinancialStore {
   })
   const status = ref('')
 
+  /** 当前规划参数（旧数据可能还没有 plan 字段） */
+  function currentPlan(): IPlanSettings {
+    return mergePlanSettings((data.value as Partial<IFinancialData>).plan)
+  }
+
+  // 兼容旧数据：旧 JSON 没有 plan，规划参数存在单独的 localStorage key 里
+  function migratePlan() {
+    if ((data.value as Partial<IFinancialData>).plan)
+      return
+    let legacy: Partial<IPlanSettings> | null = null
+    try {
+      const raw = localStorage.getItem(LEGACY_PLAN_KEY)
+      if (raw)
+        legacy = JSON.parse(raw) as Partial<IPlanSettings>
+      localStorage.removeItem(LEGACY_PLAN_KEY)
+    }
+    catch {
+      // 忽略损坏的旧配置
+    }
+    data.value = { ...data.value, plan: mergePlanSettings(legacy) }
+  }
+  migratePlan()
+
   const isSupported = useSupported(() => 'showSaveFilePicker' in window && 'showOpenFilePicker' in window)
 
   const fileHandle = shallowRef<FileSystemFileHandle | null>(null)
@@ -63,7 +89,11 @@ export function useFinancialData(): IFinancialStore {
   function applyData(json: IFinancialData) {
     if (!json || !Array.isArray(json.fiancial_data) || !Array.isArray(json.items_of_long_term_use))
       throw new Error('无效的数据格式')
-    data.value = json
+    // 旧 JSON 没有 plan 时保留当前规划参数；带 plan 则以文件里的为准
+    data.value = {
+      ...json,
+      plan: mergePlanSettings(currentPlan(), (json as Partial<IFinancialData>).plan),
+    }
   }
 
   async function readFile(f: File) {
@@ -139,7 +169,8 @@ export function useFinancialData(): IFinancialStore {
 
   function loadExample() {
     fileHandle.value = null
-    data.value = generateExampleData()
+    // 只替换示例数据，保留用户自己的规划参数
+    data.value = { ...generateExampleData(), plan: currentPlan() }
     status.value = '已加载完整示例数据'
   }
 
@@ -148,6 +179,7 @@ export function useFinancialData(): IFinancialStore {
     data.value = {
       fiancial_data: [],
       items_of_long_term_use: [],
+      plan: currentPlan(),
     }
     status.value = '已清空数据'
   }

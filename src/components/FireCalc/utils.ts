@@ -1,4 +1,4 @@
-import type { IFinancialEntry } from './types'
+import { DEFAULT_PLAN_SETTINGS, type IFinancialEntry, type IPlanSettings } from './types'
 
 export function esc(s: unknown): string {
   return String(s ?? '')
@@ -141,4 +141,17 @@ export function calcFIRE(expense: number, swr: number, monthlySave: number, annu
 
 export function subtotal(details: { net_assets: number, not_included?: boolean }[]): number {
   return details.filter(d => !d.not_included).reduce((s, d) => s + (d.net_assets || 0), 0)
+}
+
+/**
+ * 合并 FIRE 规划参数：用默认值补齐缺失字段，后面的来源覆盖前面的。
+ * 用于兼容旧 JSON（没有 plan 字段）以及读取手改过的部分字段。
+ */
+export function mergePlanSettings(...sources: (Partial<IPlanSettings> | null | undefined)[]): IPlanSettings {
+  const merged: IPlanSettings = { ...DEFAULT_PLAN_SETTINGS }
+  for (const source of sources) {
+    if (source)
+      Object.assign(merged, source)
+  }
+  return merged
 }

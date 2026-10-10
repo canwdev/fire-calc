@@ -24,9 +24,32 @@ export interface ILongTermItem {
   retire_date: string | null
 }
 
+export interface IPlanSettings {
+  save: number
+  ret: number
+  years: number
+  expense: number
+  swr: number
+  infl: number
+  age: string | number
+}
+
+/** FIRE 规划默认参数 */
+export const DEFAULT_PLAN_SETTINGS: IPlanSettings = {
+  save: 10000,
+  ret: 5,
+  years: 20,
+  expense: 100000,
+  swr: 4,
+  infl: 2,
+  age: '',
+}
+
 export interface IFinancialData {
   fiancial_data: IFinancialEntry[]
   items_of_long_term_use: ILongTermItem[]
+  /** FIRE 规划参数，随数据一起导出 / 同步 */
+  plan: IPlanSettings
 }
 
 export type SnapdomFn = (element: Element, options?: SnapdomOptions) => Promise<CaptureResult>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { inject, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useStorage } from '@vueuse/core'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { financialStoreKey } from './types'
 import { initChartWhenReady, type Chart } from './useChart'
 import {
@@ -26,20 +25,8 @@ const fireRef = ref<HTMLDivElement>()
 let fcChart: Chart | undefined
 let fireChart: Chart | undefined
 
-const form = useStorage(
-  'fire_calc_plan_form',
-  {
-    save: 10000,
-    ret: 5,
-    years: 20,
-    expense: 100000,
-    swr: 4,
-    infl: 2,
-    age: '' as string | number,
-  },
-  localStorage,
-  { listenToStorageChanges: false },
-)
+// FIRE 规划参数现在随 IFinancialData.plan 一起保存（导出 / 导入 / Gist 同步都会带上）
+const form = computed(() => data.value.plan)
 
 const saveHint = ref('')
 const metrics = ref<{ label: string, value: string, sub?: string }[]>([])
@@ -319,7 +306,7 @@ onUnmounted(() => {
   chartDisposers.length = 0
 })
 
-watch([form, data], debouncedUpdate, { deep: true })
+watch(data, debouncedUpdate, { deep: true })
 </script>
 
 <template>
