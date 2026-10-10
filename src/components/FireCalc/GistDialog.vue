@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { decryptText, encryptText, isEncryptedPayload } from './crypto'
 import { DEFAULT_GIST_FILENAME, pullGist, pushGist } from './gist'
 import type { IFinancialData } from './types'
 import { financialStoreKey } from './types'
@@ -12,6 +13,7 @@ const store = inject(financialStoreKey)!
 const { config, persist, clearConfig } = useGistConfig()
 
 const showToken = ref(false)
+const showPassword = ref(false)
 const busy = ref(false)
 const status = ref<{ type: 'success' | 'error' | 'info', text: string } | null>(null)
 
@@ -32,6 +34,7 @@ function normalizeConfig() {
   config.value.token = config.value.token.replace(/[^\x20-\x7E]/g, '').trim()
   config.value.gistId = config.value.gistId.trim()
   config.value.filename = config.value.filename.trim() || DEFAULT_GIST_FILENAME
+  config.value.password = config.value.password.trim()
 }
 
 async function onPull() {
@@ -42,9 +45,17 @@ async function onPull() {
   status.value = null
   try {
     const result = await pullGist(config.value)
+    let text = result.content
+    let decrypted = false
+    if (isEncryptedPayload(text)) {
+      if (!config.value.password)
+        throw new Error('该 Gist 内容已加密，请先填写密码')
+      text = await decryptText(config.value.password, text)
+      decrypted = true
+    }
     let json: unknown
     try {
-      json = JSON.parse(result.content)
+      json = JSON.parse(text)
     }
     catch {
       throw new Error('Gist 内容不是有效的 JSON')
@@ -57,7 +68,7 @@ async function onPull() {
     persist()
     status.value = {
       type: 'success',
-      text: `已拉取 Gist ${result.gistId.slice(0, 8)}… 并覆盖本地数据（${result.content.length} 字符）`,
+      text: `已拉取 Gist ${result.gistId.slice(0, 8)}… 并覆盖本地数据（${text.length} 字符${decrypted ? '，已解密' : ''}）`,
     }
   }
   catch (e) {
@@ -75,15 +86,17 @@ async function onPush() {
   busy.value = true
   status.value = null
   try {
-    const content = JSON.stringify(store.data.value, null, 2)
+    const plain = JSON.stringify(store.data.value, null, 2)
+    const encrypted = config.value.password !== ''
+    const content = encrypted ? await encryptText(config.value.password, plain) : plain
     const result = await pushGist(config.value, content)
     config.value.gistId = result.gistId
     persist()
     status.value = {
       type: 'success',
       text: result.created
-        ? `已创建私有 Gist：${result.gistId}`
-        : `已推送当前数据到 Gist ${result.gistId.slice(0, 8)}…`,
+        ? `已创建私有 Gist：${result.gistId}${encrypted ? '（内容已加密）' : ''}`
+        : `已推送当前数据到 Gist ${result.gistId.slice(0, 8)}…${encrypted ? '（内容已加密）' : ''}`,
     }
   }
   catch (e) {
@@ -161,8 +174,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             <input v-model="config.filename" spellcheck="false" :placeholder="DEFAULT_GIST_FILENAME">
           </label>
 
+          <label class="gist-field">
+            <span>加密密码 <em>选填，留空则不加密</em></span>
+            <div class="gist-row">
+              <input
+                v-model="config.password"
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="new-password"
+                spellcheck="false"
+                placeholder="留空则以明文存储"
+              >
+              <button class="g-btn" type="button" @click="showPassword = !showPassword">
+                {{ showPassword ? '隐藏' : '显示' }}
+              </button>
+            </div>
+            <small>推送前用 Web Crypto 加密（PBKDF2-SHA256 派生密钥 + AES-GCM），Gist 链接泄露也不可读；密码不对将无法解密，请自行保管。</small>
+          </label>
+
           <p class="gist-warn">
-            ⚠️ 配置（含 Token）会自动以明文保存在浏览器 localStorage 中，请仅在个人设备上使用；可随时点「清除配置」删除。
+            ⚠️ 配置（含 Token 与加密密码）会自动以明文保存在浏览器 localStorage 中，请仅在个人设备上使用；可随时点「清除配置」删除。
           </p>
 
           <div v-if="status" class="gist-status" :class="status.type">{{ status.text }}</div>

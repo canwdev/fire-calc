@@ -2,6 +2,8 @@ export interface IGistConfig {
   token: string
   gistId: string
   filename: string
+  /** 选填：非空时推送前加密、拉取后解密 */
+  password: string
 }
 
 export const DEFAULT_GIST_FILENAME = 'financial-data.json'

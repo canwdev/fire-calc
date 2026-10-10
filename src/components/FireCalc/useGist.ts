@@ -6,6 +6,7 @@ function defaultConfig(): IGistConfig {
     token: '',
     gistId: '',
     filename: DEFAULT_GIST_FILENAME,
+    password: '',
   }
 }
 
@@ -24,6 +25,7 @@ function loadFromStorage() {
       token: typeof parsed.token === 'string' ? parsed.token : '',
       gistId: typeof parsed.gistId === 'string' ? parsed.gistId : '',
       filename: typeof parsed.filename === 'string' && parsed.filename.trim() ? parsed.filename : DEFAULT_GIST_FILENAME,
+      password: typeof parsed.password === 'string' ? parsed.password : '',
     }
   }
   catch {
@@ -33,14 +35,14 @@ function loadFromStorage() {
 
 /** 始终记住配置；删除只能走 clearConfig() */
 function persist() {
-  const { token, gistId, filename } = config.value
+  const { token, gistId, filename, password } = config.value
   try {
     // 没有任何有效配置时不写入，避免「清除配置」后又留下空记录
     if (!token && !gistId) {
       localStorage.removeItem(GIST_CONFIG_STORAGE_KEY)
       return
     }
-    localStorage.setItem(GIST_CONFIG_STORAGE_KEY, JSON.stringify({ token, gistId, filename }))
+    localStorage.setItem(GIST_CONFIG_STORAGE_KEY, JSON.stringify({ token, gistId, filename, password }))
   }
   catch {
     // localStorage 不可用时静默失败
